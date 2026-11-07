@@ -2,16 +2,12 @@ const getParagraph = require("./kdoc-utils/text-utils/get-paragraph");
 const getStyles = require("./kdoc-utils/get-styles");
 const getTables = require("./kdoc-utils/get-tables");
 
-const { parseHtml, findAll } = require("./kdoc-utils/html-lite");
+const { parseHtml, findAll, prepareHtml } = require("./kdoc-utils/html-lite");
 
-/**
- * Конвертирует html-строку в объект особого вида.
- *
- * @param {string} html
- * @returns {Promise<object>}
- */
-module.exports = async (html) => {
-  const stylesData = getStyles(html);
+module.exports = async (rawHtml) => {
+  const stylesData = getStyles(rawHtml);
+
+  const html = prepareHtml(rawHtml);
 
   const root = parseHtml(html);
 
@@ -27,17 +23,44 @@ module.exports = async (html) => {
 
   const tablesArray = getTables(tables, null, stylesData);
 
+  const tableByFirstPid = new Map();
+
+  for (const table of tablesArray) {
+    if (table.firstPid && !tableByFirstPid.has(table.firstPid)) {
+      tableByFirstPid.set(table.firstPid, table);
+    }
+  }
+
+  const tableFirstIdx = new WeakMap();
+
+  for (const table of tablesArray) {
+    let firstIdx = -1;
+
+    if (Array.isArray(table.cells)) {
+      for (let j = 0; j < table.cells.length; j++) {
+        const cell = table.cells[j];
+
+        if (cell && cell.pid == table.firstPid) {
+          firstIdx = j;
+          break;
+        }
+      }
+    }
+
+    tableFirstIdx.set(table, firstIdx);
+  }
+
   const resultArray = [];
 
   for (let i = 0; i < objects.length; i++) {
     const object = objects[i];
 
-    const table = tablesArray.find(
-        (tableItem) => tableItem.firstPid == object.pid
-    );
+    const table = tableByFirstPid.get(object.pid);
 
     if (table) {
-      if (!table.firstPid || !table.lastPid) continue;
+      if (!table.firstPid || !table.lastPid) {
+        continue;
+      }
 
       if (table.type == "TABLE") {
         resultArray.push(table);
@@ -51,9 +74,7 @@ module.exports = async (html) => {
         });
       }
 
-      const firstIdx = table.cells.indexOf(
-          table.cells.find((cell) => cell.pid == table.firstPid)
-      );
+      const firstIdx = tableFirstIdx.get(table);
 
       i += table.cells.length - 1 - firstIdx;
     } else {
@@ -61,19 +82,6 @@ module.exports = async (html) => {
     }
   }
 
-  if (html.includes("1200082711")) {
-    console.log(
-        "TABLES DEBUG:",
-        tablesArray.map((t) => ({
-          type: t.type,
-          firstPid: t.firstPid,
-          lastPid: t.lastPid,
-          cellsCount: Array.isArray(t.cells) ? t.cells.length : undefined,
-          rowsCount: Array.isArray(t.rows) ? t.rows.length : undefined,
-          objectsCount: Array.isArray(t.objects) ? t.objects.length : undefined,
-        }))
-    );
-  }
   return {
     objects: resultArray,
     styles: stylesData,

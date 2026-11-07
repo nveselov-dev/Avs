@@ -1,15 +1,12 @@
 const {
-  isBoldFull,
-  isItalicText,
   getTextFormat,
 } = require("../text-utils/text-format-utils");
 
 const {
-  outerHtml,
-  innerHtml,
   attr,
-  text,
   findDescendants,
+  getParagraphStats,
+  innerHtml,
 } = require("../html-lite");
 
 const kdocHtmlRegExp =
@@ -36,7 +33,7 @@ function pictureTextFromInnerHtml(html) {
  *
  * @param {object} tableObject табличный объект из адаптера.
  * @param {object[]} rows массив DOM-нод <tr>.
- * @param {*} _$ Заглушка вместо cheerio API.
+ * @param {*} _$ заглушка вместо cheerio API.
  * @param {object} stylesData объект со стилями.
  * @returns {void}
  */
@@ -54,11 +51,10 @@ module.exports = (tableObject, rows, _$, stylesData) => {
     const cellElements = findDescendants(row, "td", "p");
 
     cellElements.forEach((cell) => {
-      const source = outerHtml(cell);
-      const inner = innerHtml(cell);
+      const stats = getParagraphStats(cell, stylesData);
 
-      // Оригинальный $(cell).text()
-      const cellTextOriginal = text(cell);
+      const inner = stats.inner;
+      const cellTextOriginal = stats.originalText;
 
       let cellText = "";
 
@@ -78,12 +74,12 @@ module.exports = (tableObject, rows, _$, stylesData) => {
       const isBold =
           cellTextOriginal.trim() &&
           ((styleClass && styleClass["font-weight"] == "bold") ||
-              isBoldFull(source, stylesData));
+              stats.boldFull);
 
       const isItalic =
           cellTextOriginal.trim() &&
           ((styleClass && styleClass["font-style"] == "italic") ||
-              isItalicText(source, stylesData));
+              stats.italicFull);
 
       const format = getTextFormat(
           styleClass,

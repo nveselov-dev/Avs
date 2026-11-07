@@ -1,19 +1,13 @@
 const isHorizontalLinesOnly = require("./is-only-horisontal");
 
 const {
-  isBoldFull,
-  isItalicText,
   getTextFormat,
 } = require("../text-utils/text-format-utils");
 
 const {
-  outerHtml,
-  innerHtml,
   attr,
-  text,
-  textFromHtml,
-  replacePadding1emWithSpace,
   findDescendants,
+  getParagraphStats,
 } = require("../html-lite");
 
 /**
@@ -33,28 +27,20 @@ module.exports = (rows, _$, stylesData, tableObject) => {
       const className = attr(cellElement, "class");
       const styleClass = stylesData[className];
 
-      const source = outerHtml(cellElement);
-      const inner = innerHtml(cellElement);
+      const stats = getParagraphStats(cellElement, stylesData);
 
-      // Оригинальный $cellElement.text()
-      const cellTextOriginal = text(cellElement);
-
-      // Оригинальный cheerio.load($cellElement.html())
-      // + замена span[style="padding-left:1em;"] на пробел
-      // + $e.text()
-      const cellTextAfterPadding1em = textFromHtml(
-          replacePadding1emWithSpace(inner)
-      );
+      const cellTextOriginal = stats.originalText;
+      const cellTextAfterPadding1em = stats.textAfterPadding1em;
 
       const isBold =
           cellTextOriginal.trim() &&
           ((styleClass && styleClass["font-weight"] == "bold") ||
-              isBoldFull(source, stylesData));
+              stats.boldFull);
 
       const isItalic =
           cellTextOriginal.trim() &&
           ((styleClass && styleClass["font-style"] == "italic") ||
-              isItalicText(source, stylesData));
+              stats.italicFull);
 
       const format = getTextFormat(
           styleClass,
@@ -64,7 +50,7 @@ module.exports = (rows, _$, stylesData, tableObject) => {
 
       const cellObject = {
         type: "P",
-        source,
+        source: stats.source,
         pid: attr(cellElement, "data-pid"),
         spacesBefore: 0,
         text: cellTextAfterPadding1em,

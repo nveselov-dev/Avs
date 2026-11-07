@@ -5,6 +5,7 @@ const {
   parseHtml,
   findAll,
   attr,
+  getBorderFlags,
 } = require("../html-lite");
 
 const docType = require("../../constants").DOC_TYPE;
@@ -13,17 +14,7 @@ const notRowMarker = require("../../constants").NOT_ROW_MARKER;
 const formRegExp =
     /\([\s\S]*?(дата|имя|фамилия|отчество|инициалы|подпись|наименование|должность)[\s\S]*?\)/;
 
-/**
- * Заполняет поле "objects" у табличного объекта, если это не таблица,
- * а элементы в рамке.
- *
- * @param {object} tableObject табличный объект из адаптера.
- * @param {string} tableString HTML-строка с таблицей/рамкой.
- * @param {object} stylesData объект со стилями.
- * @returns {void}
- */
 module.exports = (tableObject, tableString, stylesData) => {
-  // Если в таблице есть ячейка с указанным шаблоном, то это, скорее всего, просто форма.
   if (
       tableObject.cells.find((cell) =>
           cell.text.trim().match(formRegExp)
@@ -44,7 +35,6 @@ module.exports = (tableObject, tableString, stylesData) => {
   let colNumb = 1;
   let colString = "";
 
-  // Обрезаем крайние колонки.
   const cutHtml = tableString
       .replace(
           /<col[^>]*?>([\s\S]*?<\/col>)?/g,
@@ -90,7 +80,6 @@ module.exports = (tableObject, tableString, stylesData) => {
 
   let table = "";
 
-  // Формируем массив html-строк, полученных из объектов внутри рамки.
   for (let row of rows) {
     const cells =
         row.match(/<td[^>]*?>[\s\S]*?<\/td>/g) || [];
@@ -102,10 +91,10 @@ module.exports = (tableObject, tableString, stylesData) => {
         const classMatch = cell.match(/class="([^"]*)"/);
         const className = classMatch ? classMatch[1] : "";
 
-        const styleClass = stylesData[className] || {};
+        const flags = getBorderFlags(stylesData[className]);
 
-        const left = /solid/.test(styleClass["border-left"]);
-        const right = /solid/.test(styleClass["border-right"]);
+        const left = flags.left;
+        const right = flags.right;
 
         if (
             (!left && !right) ||
@@ -136,23 +125,20 @@ module.exports = (tableObject, tableString, stylesData) => {
       const lastClassMatch =
           lastCell && lastCell.match(/class="([^"]*)"/);
 
-      const firstCellClass =
+      const firstFlags = getBorderFlags(
           stylesData[
               firstClassMatch ? firstClassMatch[1] : ""
-              ] || {};
+              ]
+      );
 
-      const lastCellClass =
+      const lastFlags = getBorderFlags(
           stylesData[
               lastClassMatch ? lastClassMatch[1] : ""
-              ] || {};
-
-      const leftFirst = /solid/.test(
-          firstCellClass["border-left"]
+              ]
       );
 
-      const rightLast = /solid/.test(
-          lastCellClass["border-right"]
-      );
+      const leftFirst = firstFlags.left;
+      const rightLast = lastFlags.right;
 
       if (!leftFirst && !rightLast) {
         htmlStrings.push(row);
@@ -171,23 +157,20 @@ module.exports = (tableObject, tableString, stylesData) => {
     const lastClassMatch =
         lastCell && lastCell.match(/class="([^"]*)"/);
 
-    const firstCellClass =
+    const firstFlags = getBorderFlags(
         stylesData[
             firstClassMatch ? firstClassMatch[1] : ""
-            ] || {};
+            ]
+    );
 
-    const lastCellClass =
+    const lastFlags = getBorderFlags(
         stylesData[
             lastClassMatch ? lastClassMatch[1] : ""
-            ] || {};
-
-    const leftBorder = /solid/.test(
-        firstCellClass["border-left"]
+            ]
     );
 
-    const rightBorder = /solid/.test(
-        lastCellClass["border-right"]
-    );
+    const leftBorder = firstFlags.left;
+    const rightBorder = lastFlags.right;
 
     if (
         (leftBorder || rightBorder) &&
@@ -217,7 +200,6 @@ module.exports = (tableObject, tableString, stylesData) => {
     );
   }
 
-  // Заполняем поле "objects" объектами, полученными из внутренностей рамки.
   for (let string of htmlStrings) {
     if (string.match(/^<p/)) {
       const root = parseHtml(string);
@@ -267,14 +249,6 @@ module.exports = (tableObject, tableString, stylesData) => {
   }
 };
 
-/**
- * Определяет тип границ исходной рамки.
- *
- * @param {object} tableObject табличный объект из адаптера.
- * @param {object} tableElement DOM-нода <table>.
- * @param {object} stylesData объект со стилями.
- * @returns {void}
- */
 function setFrameBorders(
     tableObject,
     tableElement,
@@ -288,18 +262,14 @@ function setFrameBorders(
     }
 
     const style = stylesData[className] || {};
+    const flags = getBorderFlags(style);
 
     const leftValue = style["border-left"] || "";
     const rightValue = style["border-right"] || "";
     const topValue = style["border-top"] || "";
     const bottomValue = style["border-bottom"] || "";
 
-    const left = /solid/.test(leftValue);
-    const right = /solid/.test(rightValue);
-    const top = /solid/.test(topValue);
-    const bottom = /solid/.test(bottomValue);
-
-    if (left) {
+    if (flags.left) {
       if (!tableObject.borderColor) {
         tableObject.borderColor = String(leftValue)
             .trim()
@@ -313,7 +283,7 @@ function setFrameBorders(
       }
     }
 
-    if (right) {
+    if (flags.right) {
       if (!tableObject.borderColor) {
         tableObject.borderColor = String(rightValue)
             .trim()
@@ -327,7 +297,7 @@ function setFrameBorders(
       }
     }
 
-    if (top) {
+    if (flags.top) {
       if (!tableObject.borderColor) {
         tableObject.borderColor = String(topValue)
             .trim()
@@ -341,7 +311,7 @@ function setFrameBorders(
       }
     }
 
-    if (bottom) {
+    if (flags.bottom) {
       if (!tableObject.borderColor) {
         tableObject.borderColor = String(bottomValue)
             .trim()

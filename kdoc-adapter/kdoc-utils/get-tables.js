@@ -9,7 +9,7 @@ const fillByObjects = require("./table-utils/fill-by-objects");
 const fillTermins = require("./table-utils/fill-termins");
 const fillByPictures = require("./table-utils/fill-by-pictures");
 
-const { innerHtml, findAll, findDescendants, attr } = require("./html-lite");
+const { innerHtml, findAll } = require("./html-lite");
 
 const docType = require("../constants").DOC_TYPE;
 

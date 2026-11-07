@@ -1,8 +1,6 @@
 const {
-  innerHtml,
-  replacePadding1emWithSpace,
-  textFromHtml,
   findAll,
+  textAfterPadding1em,
 } = require("../html-lite");
 
 /**
@@ -24,9 +22,7 @@ module.exports = (rows, _$) => {
     const rowLength = tds.length;
 
     tds.forEach((cellElement, cellIndex) => {
-      const html = innerHtml(cellElement);
-      const replaced = replacePadding1emWithSpace(html);
-      const text = textFromHtml(replaced).trim();
+      const text = textAfterPadding1em(cellElement).trim();
 
       if (text) {
         isFirstCell = true;

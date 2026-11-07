@@ -1,25 +1,14 @@
 const {
-  isBoldFull,
-  isBoldStart,
-  isItalicText,
   getTextFormat,
 } = require("./text-format-utils");
 
 const {
-  outerHtml,
-  innerHtml,
   attr,
-  text,
-  textFromHtml,
-  replacePadding1emWithSpace,
+  getParagraphStats,
   pictureTextFromHtml,
-  findSpanByExactStyle,
 } = require("../html-lite");
 
 const docType = require("../../constants").DOC_TYPE;
-
-const pictureRegExp =
-    /<picture\s+class="[^>]+"><img\s+src="data:image\/png;base64,[^>]+"\s+style="[^>]+"><\/picture>/;
 
 /**
  * Создаёт объект-параграф.
@@ -30,67 +19,40 @@ const pictureRegExp =
  * @returns {object} PObject
  */
 module.exports = (_$, $element, stylesData) => {
-  const source = outerHtml($element);
-  const inner = innerHtml($element);
-
-  // Эмуляция:
-  // const $e = cheerio.load($element.html());
-  // $e('span[style="padding-left:1em;"]').each(... replaceWith(" "));
-  // text: $e.text()
-  const textAfterPadding1em = textFromHtml(
-      replacePadding1emWithSpace(inner)
-  );
-
-  // Эмуляция:
-  // const spanElement = $('span[style="padding-left:5em;"]', $element);
-  const spanElement = findSpanByExactStyle(
-      $element,
-      "padding-left:5em;"
-  );
-
-  const styleAttributeValue = spanElement
-      ? attr(spanElement, "style")
-      : null;
-
-  const paddingValue = styleAttributeValue
-      ? styleAttributeValue.match(/padding-left:(\d+)em;/)
-      : null;
-
-  const spacesBefore = paddingValue ? parseInt(paddingValue[1]) : 0;
+  const stats = getParagraphStats($element, stylesData);
 
   const className = attr($element, "class");
   const styleClass = stylesData[className];
 
-  // Для format оригинал использует $element.text(), НЕ $e.text()
-  const elementText = text($element);
+  const textForChecks = stats.textAfterPadding1em;
 
   const isBold =
-      textAfterPadding1em.trim() &&
+      textForChecks.trim() &&
       ((styleClass && styleClass["font-weight"] == "bold") ||
-          isBoldFull(source, stylesData));
+          stats.boldFull);
 
   const isItalic =
-      textAfterPadding1em.trim() &&
+      textForChecks.trim() &&
       ((styleClass && styleClass["font-style"] == "italic") ||
-          isItalicText(source, stylesData));
+          stats.italicFull);
 
-  const format = getTextFormat(styleClass, elementText, isBold);
+  const format = getTextFormat(styleClass, stats.originalText, isBold);
 
   const PObject = {
     type: "P",
-    source,
+    source: stats.source,
     pid: attr($element, "data-pid"),
-    spacesBefore,
-    text: textAfterPadding1em,
+    spacesBefore: stats.hasPaddingLeft5em ? 5 : 0,
+    text: textForChecks,
     format,
     align: styleClass ? styleClass["text-align"] : undefined,
     isBold,
     isItalic,
-    isBoldBegin: isBoldStart(source, stylesData),
+    isBoldBegin: stats.boldStart,
     docType,
   };
 
-  if (pictureRegExp.test(PObject.source.trim())) {
+  if (stats.hasPicture) {
     PObject.text = pictureTextFromHtml(PObject.source);
   }
 

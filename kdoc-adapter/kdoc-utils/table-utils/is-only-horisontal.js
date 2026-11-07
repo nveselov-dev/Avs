@@ -1,13 +1,5 @@
-const { attr, findAll } = require("../html-lite");
+const { attr, findAll, getBorderFlags } = require("../html-lite");
 
-/**
- * Проверяет, что таблица имеет только верхнюю и нижнюю границу.
- *
- * @param {object[]} rows массив DOM-нод <tr>.
- * @param {*} _$ Заглушка вместо cheerio API.
- * @param {object} stylesData объект со стилями.
- * @returns {boolean} true, если у таблицы только горизонтальные линии.
- */
 module.exports = (rows, _$, stylesData) => {
   let isHorizontalLinesOnly = true;
 
@@ -18,12 +10,12 @@ module.exports = (rows, _$, stylesData) => {
       }
 
       const className = attr(cellElement, "class");
-      const styleClass = stylesData[className] || {};
+      const flags = getBorderFlags(stylesData[className]);
 
-      const top = /solid/.test(styleClass["border-top"]);
-      const bottom = /solid/.test(styleClass["border-bottom"]);
-      const left = /solid/.test(styleClass["border-left"]);
-      const right = /solid/.test(styleClass["border-right"]);
+      const top = flags.top;
+      const bottom = flags.bottom;
+      const left = flags.left;
+      const right = flags.right;
 
       if (rowIndex == 0) {
         if (top && !bottom && !left && !right) {

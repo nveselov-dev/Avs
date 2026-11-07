@@ -1,33 +1,26 @@
-const { attr, findAll } = require("../html-lite");
+const { attr, findAll, getBorderFlags } = require("../html-lite");
 
-/**
- * Проверяет, что таблица является просто элементами в рамке.
- *
- * @param {object[]} rows массив DOM-нод <tr>.
- * @param {*} _$ Заглушка вместо cheerio API.
- * @param {object} stylesData объект со стилями.
- * @returns {boolean} true, если таблица является рамкой с объектами.
- */
 module.exports = (rows, _$, stylesData) => {
   let isSingleFrame = true;
 
   const rowCount = rows.length;
 
   rows.forEach((rowElement, rowIndex) => {
-    const colCount = findAll(rowElement, "td").length;
+    const tds = findAll(rowElement, "td");
+    const colCount = tds.length;
 
-    findAll(rowElement, "td").forEach((cellElement, cellIndex) => {
+    tds.forEach((cellElement, cellIndex) => {
       if (!isSingleFrame) {
         return;
       }
 
       const className = attr(cellElement, "class");
-      const styleClass = stylesData[className] || {};
+      const flags = getBorderFlags(stylesData[className]);
 
-      const left = /solid/.test(styleClass["border-left"]);
-      const right = /solid/.test(styleClass["border-right"]);
-      const top = /solid/.test(styleClass["border-top"]);
-      const bottom = /solid/.test(styleClass["border-bottom"]);
+      const left = flags.left;
+      const right = flags.right;
+      const top = flags.top;
+      const bottom = flags.bottom;
 
       const isTopRow = rowIndex == 0;
       const isBottomRow = rowIndex == rowCount - 1;

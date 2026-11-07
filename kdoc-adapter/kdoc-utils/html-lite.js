@@ -1,24 +1,5 @@
 "use strict";
 
-/**
- * @module html-lite
- * @description Быстрая совместимая замена части cheerio для kdoc-adapter.
- *
- * Поддерживает ровно тот набор операций, который нужен legacy-логике:
- * - parseHtml(html)
- * - findAll(root, tag)
- * - findDescendants(root, ancestorTag, tag)
- * - attr(node, name)
- * - outerHtml(node)
- * - innerHtml(node)
- * - text(node)
- * - textFromHtml(html)
- * - replacePadding1emWithSpace(html)
- * - pictureTextFromHtml(html)
- * - findSpanByExactStyle(root, styleValue)
- * - findSpansByClass(root, className)
- */
-
 const VOID_TAGS = new Set([
     "area",
     "base",
@@ -43,9 +24,6 @@ const TABLE_CONTEXT_TAGS = new Set([
     "tfoot",
 ]);
 
-/**
- * Теги, которые по HTML-спецификации неявно закрывают открытый <p>.
- */
 const P_CLOSING_TAGS = new Set([
     "address",
     "article",
@@ -77,13 +55,11 @@ const P_CLOSING_TAGS = new Set([
     "section",
     "table",
     "ul",
-
     "tr",
     "td",
     "th",
     "caption",
     "colgroup",
-
     "li",
     "dt",
     "dd",
@@ -91,126 +67,79 @@ const P_CLOSING_TAGS = new Set([
 
 const NAMED_ENTITIES = {
     nbsp: "\u00A0",
-    ensp: "\u2002",
-    emsp: "\u2003",
-    thinsp: "\u2009",
-    hairsp: "\u200A",
-
     amp: "&",
     lt: "<",
     gt: ">",
     quot: '"',
     apos: "'",
-
+    ensp: "\u2002",
+    emsp: "\u2003",
+    thinsp: "\u2009",
     ndash: "\u2013",
     mdash: "\u2014",
-
     lsquo: "\u2018",
     rsquo: "\u2019",
     ldquo: "\u201C",
     rdquo: "\u201D",
-
     laquo: "\u00AB",
     raquo: "\u00BB",
-
-    sect: "\u00A7",
+    hellip: "\u2026",
+    bull: "\u2022",
+    middot: "\u00B7",
     copy: "\u00A9",
     reg: "\u00AE",
     trade: "\u2122",
-
     deg: "\u00B0",
     plusmn: "\u00B1",
     times: "\u00D7",
     divide: "\u00F7",
     micro: "\u00B5",
-    middot: "\u00B7",
-
-    hellip: "\u2026",
-    bull: "\u2022",
-    dagger: "\u2020",
-    Dagger: "\u2021",
-    prime: "\u2032",
-    Prime: "\u2033",
-
     euro: "\u20AC",
     pound: "\u00A3",
     yen: "\u00A5",
     cent: "\u00A2",
-
+    sect: "\u00A7",
+    dagger: "\u2020",
+    Dagger: "\u2021",
+    prime: "\u2032",
+    Prime: "\u2033",
     frac12: "\u00BD",
     frac14: "\u00BC",
     frac34: "\u00BE",
     sup1: "\u00B9",
     sup2: "\u00B2",
     sup3: "\u00B3",
-
     circ: "\u02C6",
     tilde: "\u02DC",
-    grave: "\u0060",
+    grave: "`",
     acute: "\u00B4",
     cedil: "\u00B8",
-
-    Alpha: "\u0391",
-    Beta: "\u0392",
-    Gamma: "\u0393",
-    Delta: "\u0394",
-    Epsilon: "\u0395",
-    Zeta: "\u0396",
-    Eta: "\u0397",
-    Theta: "\u0398",
-    Iota: "\u0399",
-    Kappa: "\u039A",
-    Lambda: "\u039B",
-    Mu: "\u039C",
-    Nu: "\u039D",
-    Xi: "\u039E",
-    Omicron: "\u039F",
-    Pi: "\u03A0",
-    Rho: "\u03A1",
-    Sigma: "\u03A3",
-    Tau: "\u03A4",
-    Upsilon: "\u03A5",
-    Phi: "\u03A6",
-    Chi: "\u03A7",
-    Psi: "\u03A8",
-    Omega: "\u03A9",
-
-    alpha: "\u03B1",
-    beta: "\u03B2",
-    gamma: "\u03B3",
-    delta: "\u03B4",
-    epsilon: "\u03B5",
-    zeta: "\u03B6",
-    eta: "\u03B7",
-    theta: "\u03B8",
-    iota: "\u03B9",
-    kappa: "\u03BA",
-    lambda: "\u03BB",
-    mu: "\u03BC",
-    nu: "\u03BD",
-    xi: "\u03BE",
-    omicron: "\u03BF",
-    pi: "\u03C0",
-    rho: "\u03C1",
-    sigma: "\u03C3",
-    tau: "\u03C4",
-    upsilon: "\u03C5",
-    phi: "\u03C6",
-    chi: "\u03C7",
-    psi: "\u03C8",
-    omega: "\u03C9",
+    AMP: "&",
+    LT: "<",
+    GT: ">",
+    QUOT: '"',
+    COPY: "\u00A9",
+    REG: "\u00AE",
 };
 
 const ENTITY_RE = /&(#\d+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
+const PICTURE_REGEXP =
+    /<picture\s+class="[^>]+"><img\s+src="data:image\/png;base64,[^>]+"\s+style="[^>]+"><\/picture>/;
+
+const BORDER_FLAGS_CACHE = new WeakMap();
+
+const EMPTY_BORDER_FLAGS = Object.freeze({
+    left: false,
+    right: false,
+    top: false,
+    bottom: false,
+});
+
+const STYLE_META_CACHE = new WeakMap();
+
 function isWhitespace(ch) {
-    return (
-        ch === " " ||
-        ch === "\t" ||
-        ch === "\n" ||
-        ch === "\r" ||
-        ch === "\f"
-    );
+    return ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\f";
 }
 
 function isTagNameStart(ch) {
@@ -225,17 +154,14 @@ function skipWhitespace(html, pos) {
     while (pos < html.length && isWhitespace(html[pos])) {
         pos++;
     }
-
     return pos;
 }
 
 function readTagName(html, pos) {
     const start = pos;
-
     while (pos < html.length && isTagNameChar(html[pos])) {
         pos++;
     }
-
     return {
         name: html.slice(start, pos).toLowerCase(),
         end: pos,
@@ -243,30 +169,42 @@ function readTagName(html, pos) {
 }
 
 function findTagEnd(html, start) {
-    let quote = null;
+    const len = html.length;
+    let i = start + 1;
 
-    for (let i = start + 1; i < html.length; i++) {
-        const ch = html[i];
+    while (i < len) {
+        const code = html.charCodeAt(i);
 
-        if (quote) {
-            if (ch === quote) {
-                quote = null;
-            }
-
-            continue;
-        }
-
-        if (ch === '"' || ch === "'") {
-            quote = ch;
-            continue;
-        }
-
-        if (ch === ">") {
+        if (code === 62) {
             return i + 1;
         }
+
+        if (code === 34) {
+            const close = html.indexOf('"', i + 1);
+
+            if (close === -1) {
+                return len;
+            }
+
+            i = close + 1;
+            continue;
+        }
+
+        if (code === 39) {
+            const close = html.indexOf("'", i + 1);
+
+            if (close === -1) {
+                return len;
+            }
+
+            i = close + 1;
+            continue;
+        }
+
+        i++;
     }
 
-    return html.length;
+    return len;
 }
 
 function parseAttributes(html, pos) {
@@ -293,7 +231,6 @@ function parseAttributes(html, pos) {
                 pos += 2;
                 break;
             }
-
             pos++;
             continue;
         }
@@ -303,12 +240,7 @@ function parseAttributes(html, pos) {
         while (pos < html.length) {
             const c = html[pos];
 
-            if (
-                isWhitespace(c) ||
-                c === "=" ||
-                c === ">" ||
-                c === "/"
-            ) {
+            if (isWhitespace(c) || c === "=" || c === ">" || c === "/") {
                 break;
             }
 
@@ -400,120 +332,6 @@ function readOpeningTag(html, pos) {
     };
 }
 
-/**
- * Нормализует вложенные <a>, как это делает HTML-парсер.
- *
- * По спецификации <a> не может быть вложен в <a>.
- * Поэтому:
- *
- * <a href="1"><a href="2">N 3</a></a>
- *
- * должно превращаться в:
- *
- * <a href="1"></a><a href="2">N 3</a>
- *
- * @param {string} html
- * @returns {string}
- */
-function normalizeNestedAnchors(html) {
-    html = String(html || "");
-
-    let out = "";
-    let i = 0;
-
-    const openAnchors = [];
-    let skippedClosingAnchors = 0;
-
-    while (i < html.length) {
-        // Комментарий оставляем как есть.
-        if (html.startsWith("<!--", i)) {
-            const end = html.indexOf("-->", i + 4);
-            const realEnd = end === -1 ? html.length : end + 3;
-
-            out += html.slice(i, realEnd);
-            i = realEnd;
-            continue;
-        }
-
-        // DOCTYPE / processing-like tags оставляем как есть.
-        if (html.startsWith("<!", i)) {
-            const end = html.indexOf(">", i);
-            const realEnd = end === -1 ? html.length : end + 1;
-
-            out += html.slice(i, realEnd);
-            i = realEnd;
-            continue;
-        }
-
-        if (html[i] === "<") {
-            // Закрывающий тег.
-            if (html[i + 1] === "/") {
-                const close = readClosingTag(html, i);
-                const tagHtml = html.slice(i, close.end);
-
-                if (close.name === "a") {
-                    if (openAnchors.length > 0) {
-                        openAnchors.pop();
-                        out += tagHtml;
-                    } else if (skippedClosingAnchors > 0) {
-                        // Это исходный закрывающий </a> для anchor'а,
-                        // который мы уже закрыли синтетически.
-                        skippedClosingAnchors--;
-                    } else {
-                        out += tagHtml;
-                    }
-                } else {
-                    out += tagHtml;
-                }
-
-                i = close.end;
-                continue;
-            }
-
-            // Открывающий тег.
-            if (isTagNameStart(html[i + 1])) {
-                const open = readOpeningTag(html, i);
-                const tagHtml = html.slice(i, open.end);
-
-                if (open.name === "a" && !open.selfClosing) {
-                    if (openAnchors.length > 0) {
-                        // Новый <a> закрывает предыдущий открытый <a>.
-                        openAnchors.pop();
-                        skippedClosingAnchors++;
-                        out += "</a>";
-                    }
-
-                    out += tagHtml;
-                    openAnchors.push(true);
-                } else {
-                    out += tagHtml;
-                }
-
-                i = open.end;
-                continue;
-            }
-
-            // Не тег, просто "<".
-            out += html[i];
-            i++;
-            continue;
-        }
-
-        // Текст до следующего "<".
-        const next = html.indexOf("<", i);
-
-        if (next === -1) {
-            out += html.slice(i);
-            break;
-        }
-
-        out += html.slice(i, next);
-        i = next;
-    }
-
-    return out;
-}
-
 function readClosingTag(html, pos) {
     const start = pos;
     pos++;
@@ -546,6 +364,251 @@ function readClosingTag(html, pos) {
         name: tag.name,
         end: pos,
     };
+}
+
+function decodeEntities(value) {
+    return String(value).replace(ENTITY_RE, (match, entity) => {
+        if (entity[0] === "#") {
+            const isHex = entity[1] === "x" || entity[1] === "X";
+            const code = isHex
+                ? parseInt(entity.slice(2), 16)
+                : parseInt(entity.slice(1), 10);
+
+            if (Number.isFinite(code) && code >= 0 && code <= 0x10ffff) {
+                try {
+                    return String.fromCodePoint(code);
+                } catch (_) {
+                    return match;
+                }
+            }
+
+            return match;
+        }
+
+        const named = NAMED_ENTITIES[entity];
+        return named === undefined ? match : named;
+    });
+}
+
+function isAsciiLetterCode(code) {
+    return (
+        (code >= 65 && code <= 90) || // A-Z
+        (code >= 97 && code <= 122)   // a-z
+    );
+}
+
+/**
+ * Возвращает true, если позиция i указывает на начало реальной разметки:
+ * <tag, </tag, <!--, <!doctype, <?pi.
+ *
+ * Одиночный < в тексте вида "2 < 3" разметкой не считается.
+ */
+function isMarkupStart(html, i) {
+    if (i < 0 || i >= html.length) {
+        return false;
+    }
+
+    if (html.charCodeAt(i) !== 60) {
+        return false;
+    }
+
+    const next = html.charCodeAt(i + 1);
+
+    if (Number.isNaN(next)) {
+        return false;
+    }
+
+    // </tag
+    if (next === 47) {
+        const afterSlash = html.charCodeAt(i + 2);
+        return isAsciiLetterCode(afterSlash);
+    }
+
+    // <!comment, <!DOCTYPE, <![CDATA[
+    if (next === 33) {
+        return true;
+    }
+
+    // <?processing-instruction
+    if (next === 63) {
+        return true;
+    }
+
+    // <tag
+    return isAsciiLetterCode(next);
+}
+
+function findNextMarkupStart(html, from) {
+    let i = html.indexOf("<", from);
+
+    while (i !== -1) {
+        if (isMarkupStart(html, i)) {
+            return i;
+        }
+
+        i = html.indexOf("<", i + 1);
+    }
+
+    return -1;
+}
+
+function findMarkupEnd(html, start) {
+    const len = html.length;
+
+    if (html.startsWith("<!--", start)) {
+        const end = html.indexOf("-->", start + 4);
+        return end === -1 ? len : end + 3;
+    }
+
+    if (html.startsWith("<![CDATA[", start)) {
+        const end = html.indexOf("]]>", start + 9);
+        return end === -1 ? len : end + 3;
+    }
+
+    const second = html.charCodeAt(start + 1);
+
+    if (second === 33 || second === 63) {
+        const end = html.indexOf(">", start + 2);
+        return end === -1 ? len : end + 1;
+    }
+
+    return findTagEnd(html, start);
+}
+
+function getBorderFlags(style) {
+    if (!style || typeof style !== "object") {
+        return EMPTY_BORDER_FLAGS;
+    }
+
+    let flags = BORDER_FLAGS_CACHE.get(style);
+
+    if (!flags) {
+        flags = {
+            left: /solid/.test(style["border-left"] || ""),
+            right: /solid/.test(style["border-right"] || ""),
+            top: /solid/.test(style["border-top"] || ""),
+            bottom: /solid/.test(style["border-bottom"] || ""),
+        };
+
+        BORDER_FLAGS_CACHE.set(style, flags);
+    }
+
+    return flags;
+}
+
+function normalizeVoidClosings(html) {
+    return String(html).replace(
+        /<\/(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\s*>/gi,
+        ""
+    );
+}
+
+function encodeNonBreakingSpaces(html) {
+    return String(html).replace(/\u00A0/g, "&nbsp;");
+}
+
+function normalizeNestedAnchors(html) {
+    html = String(html || "");
+
+    const len = html.length;
+
+    let out = "";
+    let i = 0;
+
+    const openAnchors = [];
+    let skippedClosingAnchors = 0;
+
+    while (i < len) {
+        const next = findNextMarkupStart(html, i);
+
+        if (next === -1) {
+            out += html.slice(i);
+            break;
+        }
+
+        if (next > i) {
+            out += html.slice(i, next);
+        }
+
+        i = next;
+
+        // Комментарии, CDATA, doctype, PI оставляем как есть.
+        if (
+            html.startsWith("<!--", i) ||
+            html.startsWith("<![CDATA[", i)
+        ) {
+            const end = findMarkupEnd(html, i);
+            out += html.slice(i, end);
+            i = end;
+            continue;
+        }
+
+        const second = html.charCodeAt(i + 1);
+
+        if (second === 33 || second === 63) {
+            const end = findMarkupEnd(html, i);
+            out += html.slice(i, end);
+            i = end;
+            continue;
+        }
+
+        // Closing tag.
+        if (second === 47) {
+            const close = readClosingTag(html, i);
+            const tagHtml = html.slice(i, close.end);
+
+            if (close.name === "a") {
+                if (openAnchors.length > 0) {
+                    openAnchors.pop();
+                    out += tagHtml;
+                } else if (skippedClosingAnchors > 0) {
+                    skippedClosingAnchors--;
+                } else {
+                    out += tagHtml;
+                }
+            } else {
+                out += tagHtml;
+            }
+
+            i = close.end;
+            continue;
+        }
+
+        // Opening tag.
+        const open = readOpeningTag(html, i);
+        const tagHtml = html.slice(i, open.end);
+
+        if (open.name === "a" && !open.selfClosing) {
+            if (openAnchors.length > 0) {
+                openAnchors.pop();
+                skippedClosingAnchors++;
+                out += "</a>";
+            }
+
+            out += tagHtml;
+            openAnchors.push(true);
+        } else {
+            out += tagHtml;
+        }
+
+        i = open.end;
+    }
+
+    return out;
+}
+
+function prepareHtml(html) {
+    html = String(html || "");
+
+    html = normalizeVoidClosings(html);
+    html = normalizeNestedAnchors(html);
+    html = encodeNonBreakingSpaces(html);
+
+    return html;
+}
+
+function serializeHtmlFragment(html) {
+    return html;
 }
 
 function findLastTagIndex(stack, tags, fromIndex = stack.length - 1, toIndex = 0) {
@@ -586,16 +649,15 @@ function closeImpliedTags(stack, openingTag, index) {
     if (openingTag === "a") {
         closeNearest(stack, "a", index, 0);
     }
+
     const tableContextIndex = findLastTagIndex(stack, TABLE_CONTEXT_TAGS);
     const hasTableContext = tableContextIndex !== -1;
     const tableBoundary = hasTableContext ? tableContextIndex : 0;
 
-    // Блочные теги закрывают открытый <p>.
     if (P_CLOSING_TAGS.has(openingTag)) {
         closeNearest(stack, "p", index, hasTableContext ? tableBoundary : 0);
     }
 
-    // Табличные теги закрываем ТОЛЬКО если есть открытый table/tbody/thead/tfoot.
     if (!hasTableContext) {
         return;
     }
@@ -645,49 +707,10 @@ function closeImpliedTags(stack, openingTag, index) {
     }
 }
 
-function decodeEntities(value) {
-    return String(value).replace(ENTITY_RE, (match, entity) => {
-        if (entity[0] === "#") {
-            const isHex = entity[1] === "x" || entity[1] === "X";
-            const code = isHex
-                ? parseInt(entity.slice(2), 16)
-                : parseInt(entity.slice(1), 10);
-
-            if (Number.isFinite(code) && code >= 0 && code <= 0x10ffff) {
-                try {
-                    return String.fromCodePoint(code);
-                } catch (_) {
-                    return match;
-                }
-            }
-
-            return match;
-        }
-
-        const named = NAMED_ENTITIES[entity.toLowerCase()];
-        return named === undefined ? match : named;
-    });
-}
-
-function normalizeVoidClosings(html) {
-    return String(html).replace(
-        /<\/(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)\s*>/gi,
-        ""
-    );
-}
-
-function encodeNonBreakingSpaces(html) {
-    return String(html).replace(/\u00A0/g, "&nbsp;");
-}
-
-function serializeHtmlFragment(html) {
-    return encodeNonBreakingSpaces(
-        normalizeNestedAnchors(normalizeVoidClosings(html))
-    );
-}
-
 function parseHtml(html) {
     html = String(html || "");
+
+    const len = html.length;
 
     const root = {
         type: "root",
@@ -696,9 +719,9 @@ function parseHtml(html) {
         children: [],
         parent: null,
         start: 0,
-        end: html.length,
+        end: len,
         innerStart: 0,
-        innerEnd: html.length,
+        innerEnd: len,
         html,
         root: null,
         selfClosing: false,
@@ -711,21 +734,33 @@ function parseHtml(html) {
 
     let i = 0;
 
-    while (i < html.length) {
-        if (html.startsWith("<!--", i)) {
-            const end = html.indexOf("-->", i + 4);
-            i = end === -1 ? html.length : end + 3;
-            continue;
-        }
+    while (i < len) {
+        if (html.charCodeAt(i) === 60 && isMarkupStart(html, i)) {
+            // Comment.
+            if (html.startsWith("<!--", i)) {
+                const end = html.indexOf("-->", i + 4);
+                i = end === -1 ? len : end + 3;
+                continue;
+            }
 
-        if (html.startsWith("<!", i)) {
-            const end = html.indexOf(">", i);
-            i = end === -1 ? html.length : end + 1;
-            continue;
-        }
+            // CDATA.
+            if (html.startsWith("<![CDATA[", i)) {
+                const end = html.indexOf("]]>", i + 9);
+                i = end === -1 ? len : end + 3;
+                continue;
+            }
 
-        if (html[i] === "<") {
-            if (html[i + 1] === "/") {
+            const second = html.charCodeAt(i + 1);
+
+            // Doctype / processing instruction.
+            if (second === 33 || second === 63) {
+                const end = html.indexOf(">", i + 2);
+                i = end === -1 ? len : end + 1;
+                continue;
+            }
+
+            // Closing tag.
+            if (second === 47) {
                 const closeStart = i;
                 const close = readClosingTag(html, i);
 
@@ -757,112 +792,311 @@ function parseHtml(html) {
                 continue;
             }
 
-            if (isTagNameStart(html[i + 1])) {
-                const tagStart = i;
-                const open = readOpeningTag(html, i);
+            // Opening tag.
+            const tagStart = i;
+            const open = readOpeningTag(html, i);
 
-                if (!open.name) {
-                    i = open.end;
-                    continue;
-                }
-
-                closeImpliedTags(stack, open.name, tagStart);
-
-                const parent = stack[stack.length - 1];
-
-                const node = {
-                    type: "element",
-                    tag: open.name,
-                    attrs: open.attrs,
-                    children: [],
-                    parent,
-                    start: tagStart,
-                    end: -1,
-                    innerStart: open.end,
-                    innerEnd: -1,
-                    html,
-                    root,
-                    selfClosing: open.selfClosing || VOID_TAGS.has(open.name),
-                    _explicitClose: false,
-                };
-
-                parent.children.push(node);
-
-                if (node.selfClosing) {
-                    node.end = open.end;
-                    node.innerStart = open.end;
-                    node.innerEnd = open.end;
-                    node._explicitClose = true;
-                } else {
-                    stack.push(node);
-                }
-
+            if (!open.name) {
                 i = open.end;
                 continue;
             }
 
-            i++;
+            closeImpliedTags(stack, open.name, tagStart);
+
+            const parent = stack[stack.length - 1];
+
+            const node = {
+                type: "element",
+                tag: open.name,
+                attrs: open.attrs,
+                children: [],
+                parent,
+                start: tagStart,
+                end: -1,
+                innerStart: open.end,
+                innerEnd: -1,
+                html,
+                root,
+                selfClosing: open.selfClosing || VOID_TAGS.has(open.name),
+                _explicitClose: false,
+            };
+
+            parent.children.push(node);
+
+            if (node.selfClosing) {
+                node.end = open.end;
+                node.innerStart = open.end;
+                node.innerEnd = open.end;
+                node._explicitClose = true;
+            } else {
+                stack.push(node);
+            }
+
+            i = open.end;
             continue;
         }
 
-        const next = html.indexOf("<", i);
-        i = next === -1 ? html.length : next;
+        // Text node до следующей реальной разметки.
+        const next = findNextMarkupStart(html, i);
+        const end = next === -1 ? len : next;
+
+        if (end > i) {
+            const parent = stack[stack.length - 1];
+
+            parent.children.push({
+                type: "text",
+                value: html.slice(i, end),
+                start: i,
+                end,
+                parent,
+                root,
+                html,
+            });
+        }
+
+        i = end;
     }
 
     for (let j = stack.length - 1; j > 0; j--) {
-        stack[j].innerEnd = html.length;
-        stack[j].end = html.length;
+        stack[j].innerEnd = len;
+        stack[j].end = len;
     }
 
-    root.end = html.length;
+    root.end = len;
+
+    indexTree(root);
 
     return root;
 }
 
-function traverse(node, fn) {
-    if (!node || !node.children) {
+function traverseElements(node, fn) {
+    if (!node) {
         return;
     }
 
-    for (const child of node.children) {
-        fn(child);
-        traverse(child, fn);
+    if (node.type === "element") {
+        fn(node);
+    }
+
+    if (node.children) {
+        for (const child of node.children) {
+            traverseElements(child, fn);
+        }
     }
 }
 
+function isSkipLink(node) {
+    if (!node || node.type !== "element" || node.tag !== "a") {
+        return false;
+    }
+
+    if (node._skipLink !== undefined) {
+        return node._skipLink;
+    }
+
+    const html = node.html || (node.root && node.root.html) || "";
+
+    if (!html) {
+        node._skipLink = false;
+        return false;
+    }
+
+    const openTag = html.slice(node.start, node.innerStart);
+    const result = /<a\s+href=[^>]+>/i.test(openTag);
+
+    node._skipLink = result;
+    return result;
+}
+
+function isSkipPicture(node) {
+    if (!node || node.type !== "element" || node.tag !== "picture") {
+        return false;
+    }
+
+    if (node._skipPicture !== undefined) {
+        return node._skipPicture;
+    }
+
+    const result = PICTURE_REGEXP.test(outerHtml(node));
+
+    node._skipPicture = result;
+    return result;
+}
+
+function isSkipNode(node) {
+    return isSkipLink(node) || isSkipPicture(node);
+}
+
+function indexTree(root) {
+    root._all = {
+        p: [],
+        table: [],
+    };
+
+    const tableStack = [];
+    const rowStack = [];
+    const cellStack = [];
+    const paragraphStack = [];
+
+    function visit(node, skipped) {
+        if (!node || (node.type !== "element" && node.type !== "root")) {
+            return;
+        }
+
+        const skipSelf = node.type === "element" ? isSkipNode(node) : false;
+        const childSkipped = skipped || skipSelf;
+
+        if (node.type === "element") {
+            if (node.tag === "table") {
+                root._all.table.push(node);
+                node._trs = [];
+                node._tds = [];
+                tableStack.push(node);
+            }
+
+            if (node.tag === "tr") {
+                for (const table of tableStack) {
+                    table._trs.push(node);
+                }
+
+                node._tds = [];
+                rowStack.push(node);
+            }
+
+            if (node.tag === "td" || node.tag === "th") {
+                for (const table of tableStack) {
+                    table._tds.push(node);
+                }
+
+                for (const row of rowStack) {
+                    row._tds.push(node);
+                }
+
+                node._ps = [];
+                cellStack.push(node);
+            }
+
+            if (node.tag === "p") {
+                root._all.p.push(node);
+
+                for (const cell of cellStack) {
+                    cell._ps.push(node);
+                }
+
+                node._spans = [];
+                paragraphStack.push(node);
+            }
+
+            if (node.tag === "span") {
+                node._skipped = skipped;
+
+                for (const paragraph of paragraphStack) {
+                    paragraph._spans.push(node);
+                }
+            }
+        }
+
+        if (node.children) {
+            for (const child of node.children) {
+                visit(child, childSkipped);
+            }
+        }
+
+        if (node.type === "element") {
+            if (node.tag === "p") {
+                paragraphStack.pop();
+            }
+
+            if (node.tag === "td" || node.tag === "th") {
+                cellStack.pop();
+            }
+
+            if (node.tag === "tr") {
+                rowStack.pop();
+            }
+
+            if (node.tag === "table") {
+                tableStack.pop();
+            }
+        }
+    }
+
+    visit(root, false);
+}
+
 function findAll(root, tag) {
+    if (!root) {
+        return [];
+    }
+
+    if (root._all && root._all[tag]) {
+        return root._all[tag];
+    }
+
+    if (tag === "td" && root._tds) {
+        return root._tds;
+    }
+
+    if (tag === "tr" && root._trs) {
+        return root._trs;
+    }
+
+    if (tag === "p" && root._ps) {
+        return root._ps;
+    }
+
+    if (tag === "span" && root._spans) {
+        return root._spans;
+    }
+
+    if (!root._findAllCache) {
+        root._findAllCache = new Map();
+    }
+
+    const cached = root._findAllCache.get(tag);
+
+    if (cached) {
+        return cached;
+    }
+
     const result = [];
 
-    traverse(root, (node) => {
+    traverseElements(root, (node) => {
         if (node.tag === tag) {
             result.push(node);
         }
     });
 
+    root._findAllCache.set(tag, result);
     return result;
 }
 
-function hasAncestor(node, ancestorTag) {
-    let current = node.parent;
-
-    while (current && current.tag !== "#root") {
-        if (current.tag === ancestorTag) {
-            return true;
-        }
-
-        current = current.parent;
+function findDescendants(root, ancestorTag, tag) {
+    if (!root) {
+        return [];
     }
 
-    return false;
-}
+    const key = `${ancestorTag}::${tag}`;
 
-function findDescendants(root, ancestorTag, tag) {
+    if (!root._findDescendantsCache) {
+        root._findDescendantsCache = new Map();
+    }
+
+    const cached = root._findDescendantsCache.get(key);
+
+    if (cached) {
+        return cached;
+    }
+
     const ancestors = findAll(root, ancestorTag);
     const result = [];
     const seen = new Set();
 
     for (const ancestor of ancestors) {
-        const nodes = findAll(ancestor, tag);
+        const nodes =
+            ancestorTag === "td" && tag === "p" && ancestor._ps
+                ? ancestor._ps
+                : findAll(ancestor, tag);
 
         for (const node of nodes) {
             if (!seen.has(node)) {
@@ -874,6 +1108,7 @@ function findDescendants(root, ancestorTag, tag) {
 
     result.sort((a, b) => a.start - b.start);
 
+    root._findDescendantsCache.set(key, result);
     return result;
 }
 
@@ -885,9 +1120,40 @@ function attr(node, name) {
     return node.attrs[name];
 }
 
+function getClassList(node) {
+    if (!node) {
+        return [];
+    }
+
+    if (node._classList) {
+        return node._classList;
+    }
+
+    const classValue = node.attrs && node.attrs.class;
+
+    if (!classValue) {
+        node._classList = [];
+        return node._classList;
+    }
+
+    node._classList = String(classValue)
+        .split(/\s+/)
+        .filter(Boolean);
+
+    return node._classList;
+}
+
 function outerHtml(node) {
     if (!node) {
         return "";
+    }
+
+    if (node.type === "text") {
+        return node.value;
+    }
+
+    if (node._outerHtml !== undefined) {
+        return node._outerHtml;
     }
 
     const html = node.html || (node.root && node.root.html) || "";
@@ -908,6 +1174,7 @@ function outerHtml(node) {
         result += `</${node.tag}>`;
     }
 
+    node._outerHtml = result;
     return result;
 }
 
@@ -916,184 +1183,436 @@ function innerHtml(node) {
         return "";
     }
 
+    if (node.type === "text") {
+        return node.value;
+    }
+
+    if (node._innerHtml !== undefined) {
+        return node._innerHtml;
+    }
+
     const html = node.html || (node.root && node.root.html) || "";
 
     if (!html) {
         return "";
     }
 
+    let result;
+
     if (node.tag === "#root") {
-        return serializeHtmlFragment(html);
+        result = serializeHtmlFragment(html);
+    } else {
+        result = serializeHtmlFragment(html.slice(node.innerStart, node.innerEnd));
     }
 
-    return serializeHtmlFragment(html.slice(node.innerStart, node.innerEnd));
+    node._innerHtml = result;
+    return result;
 }
 
-function textFromHtml(html) {
-    html = String(html || "");
 
-    let out = "";
-    let i = 0;
-
-    while (i < html.length) {
-        if (html.startsWith("<!--", i)) {
-            const end = html.indexOf("-->", i + 4);
-            i = end === -1 ? html.length : end + 3;
-            continue;
-        }
-
-        if (html[i] === "<") {
-            i = findTagEnd(html, i);
-            continue;
-        }
-
-        const next = html.indexOf("<", i);
-        const chunk = next === -1 ? html.slice(i) : html.slice(i, next);
-
-        out += decodeEntities(chunk);
-
-        i = next === -1 ? html.length : next;
+function collectTextAll(node, out) {
+    if (!node) {
+        return;
     }
 
-    return out;
+    if (node.type === "text") {
+        out.push(decodeEntities(node.value));
+        return;
+    }
+
+    if (node.children) {
+        for (const child of node.children) {
+            collectTextAll(child, out);
+        }
+    }
 }
 
 function text(node) {
-    return textFromHtml(innerHtml(node));
-}
-
-function isSpanWithPadding1em(tag) {
-    if (!/^<span\b/i.test(tag)) {
-        return false;
+    if (!node) {
+        return "";
     }
 
-    const end = tag.endsWith("/>") ? -2 : -1;
-    const attrPart = tag.slice(5, end);
+    if (node._text !== undefined) {
+        return node._text;
+    }
 
-    try {
-        const parsed = parseAttributes(`<span${attrPart}>`, 5);
-        return parsed.attrs.style === "padding-left:1em;";
-    } catch (_) {
-        return false;
+    const out = [];
+    collectTextAll(node, out);
+    const result = out.join("");
+
+    node._text = result;
+    return result;
+}
+
+function collectTextPadding1em(node, out) {
+    if (!node) {
+        return;
+    }
+
+    if (node.type === "text") {
+        out.push(decodeEntities(node.value));
+        return;
+    }
+
+    if (
+        node.tag === "span" &&
+        node.attrs &&
+        node.attrs.style === "padding-left:1em;"
+    ) {
+        out.push(" ");
+        return;
+    }
+
+    if (node.children) {
+        for (const child of node.children) {
+            collectTextPadding1em(child, out);
+        }
     }
 }
 
-function findMatchingCloseEnd(html, from, tagName) {
-    let depth = 1;
-    let i = from;
+function textAfterPadding1em(node) {
+    if (!node) {
+        return "";
+    }
 
-    while (i < html.length) {
-        if (html.startsWith("<!--", i)) {
-            const end = html.indexOf("-->", i + 4);
-            i = end === -1 ? html.length : end + 3;
-            continue;
+    if (node._textAfterPadding1em !== undefined) {
+        return node._textAfterPadding1em;
+    }
+
+    const out = [];
+    collectTextPadding1em(node, out);
+    const result = out.join("");
+
+    node._textAfterPadding1em = result;
+    return result;
+}
+
+function collectTextOutside(node, out) {
+    if (!node) {
+        return;
+    }
+
+    if (node.type === "text") {
+        out.push(decodeEntities(node.value));
+        return;
+    }
+
+    if (isSkipNode(node)) {
+        return;
+    }
+
+    if (node.children) {
+        for (const child of node.children) {
+            collectTextOutside(child, out);
+        }
+    }
+}
+
+function textOutside(node) {
+    if (!node) {
+        return "";
+    }
+
+    if (node._textOutside !== undefined) {
+        return node._textOutside;
+    }
+
+    const out = [];
+    collectTextOutside(node, out);
+    const result = out.join("");
+
+    node._textOutside = result;
+    return result;
+}
+
+function collectParagraphTexts(node) {
+    if (!node) {
+        return {
+            original: "",
+            padded: "",
+            outside: "",
+            hasPaddingLeft5em: false,
+        };
+    }
+
+    if (node._paragraphTexts) {
+        return node._paragraphTexts;
+    }
+
+    const originalParts = [];
+    const paddedParts = [];
+    const outsideParts = [];
+    let hasPaddingLeft5em = false;
+
+    function visit(n, skipped, insidePadding1em) {
+        if (!n) {
+            return;
         }
 
-        if (html[i] === "<") {
-            if (html[i + 1] === "/") {
-                const close = readClosingTag(html, i);
+        if (n.type === "text") {
+            const decoded = decodeEntities(n.value);
 
-                if (close.name === tagName) {
-                    depth--;
+            originalParts.push(decoded);
 
-                    if (depth === 0) {
-                        return close.end;
+            if (!insidePadding1em) {
+                paddedParts.push(decoded);
+            }
+
+            if (!skipped) {
+                outsideParts.push(decoded);
+            }
+
+            return;
+        }
+
+        if (n.type !== "element") {
+            return;
+        }
+
+        const nodeSkipped = skipped || isSkipNode(n);
+
+        if (n.tag === "span") {
+            const style = n.attrs && n.attrs.style;
+
+            if (style === "padding-left:5em;") {
+                hasPaddingLeft5em = true;
+            }
+
+            if (style === "padding-left:1em;") {
+                if (!insidePadding1em) {
+                    paddedParts.push(" ");
+                }
+
+                if (n.children) {
+                    for (const child of n.children) {
+                        visit(child, nodeSkipped, true);
                     }
                 }
 
-                i = close.end;
-                continue;
+                return;
             }
-
-            if (isTagNameStart(html[i + 1])) {
-                const open = readOpeningTag(html, i);
-
-                if (
-                    open.name === tagName &&
-                    !open.selfClosing &&
-                    !VOID_TAGS.has(open.name)
-                ) {
-                    depth++;
-                }
-
-                i = open.end;
-                continue;
-            }
-
-            i++;
-            continue;
         }
 
-        i++;
+        if (n.children) {
+            for (const child of n.children) {
+                visit(child, nodeSkipped, insidePadding1em);
+            }
+        }
     }
 
-    return html.length;
+    visit(node, false, false);
+
+    const result = {
+        original: originalParts.join(""),
+        padded: paddedParts.join(""),
+        outside: outsideParts.join(""),
+        hasPaddingLeft5em,
+    };
+
+    node._paragraphTexts = result;
+    return result;
 }
 
-function replacePadding1emWithSpace(html) {
-    html = String(html || "");
+function getStyleMeta(stylesData) {
+    let meta = STYLE_META_CACHE.get(stylesData);
 
-    let out = "";
-    let i = 0;
-
-    while (i < html.length) {
-        if (html.startsWith("<!--", i)) {
-            const end = html.indexOf("-->", i + 4);
-            const realEnd = end === -1 ? html.length : end + 3;
-
-            out += html.slice(i, realEnd);
-            i = realEnd;
-            continue;
-        }
-
-        if (html[i] === "<") {
-            if (html[i + 1] === "/") {
-                const tagEnd = findTagEnd(html, i);
-                out += html.slice(i, tagEnd);
-                i = tagEnd;
-                continue;
-            }
-
-            if (isTagNameStart(html[i + 1])) {
-                const tagEnd = findTagEnd(html, i);
-                const tag = html.slice(i, tagEnd);
-
-                if (isSpanWithPadding1em(tag)) {
-                    if (tag.endsWith("/>")) {
-                        out += " ";
-                        i = tagEnd;
-                        continue;
-                    }
-
-                    const closeEnd = findMatchingCloseEnd(html, tagEnd, "span");
-
-                    out += " ";
-                    i = closeEnd;
-                    continue;
-                }
-
-                out += tag;
-                i = tagEnd;
-                continue;
-            }
-
-            out += html[i];
-            i++;
-            continue;
-        }
-
-        const next = html.indexOf("<", i);
-
-        if (next === -1) {
-            out += html.slice(i);
-            break;
-        }
-
-        out += html.slice(i, next);
-        i = next;
+    if (meta) {
+        return meta;
     }
 
-    return out;
+    const classOrder = Object.keys(stylesData || {});
+
+    const boldClasses = classOrder.filter(
+        (classKey) => stylesData[classKey]["font-weight"] === "bold"
+    );
+
+    const italicClasses = classOrder.filter(
+        (classKey) => stylesData[classKey]["font-style"] === "italic"
+    );
+
+    meta = {
+        classOrder,
+        boldClasses,
+        italicClasses,
+        boldSet: new Set(boldClasses),
+        italicSet: new Set(italicClasses),
+    };
+
+    STYLE_META_CACHE.set(stylesData, meta);
+    return meta;
+}
+
+function collectSpansFallback(node) {
+    const result = [];
+
+    traverseElements(node, (child) => {
+        if (child.tag === "span") {
+            result.push(child);
+        }
+    });
+
+    return result;
+}
+
+function isSpanSkipped(span) {
+    if (span._skipped !== undefined) {
+        return span._skipped;
+    }
+
+    let current = span.parent;
+
+    while (current && current.tag !== "#root") {
+        if (isSkipNode(current)) {
+            return true;
+        }
+
+        current = current.parent;
+    }
+
+    return false;
+}
+
+function processSpanForStats(span, skipped, ctx) {
+    const classList = getClassList(span);
+
+    const textAll = text(span).trim();
+
+    if (textAll) {
+        for (const classKey of classList) {
+            if (ctx.boldSet.has(classKey) && !ctx.firstBold.has(classKey)) {
+                ctx.firstBold.set(classKey, textAll);
+            }
+        }
+    }
+
+    if (!skipped) {
+        const textOut = textOutside(span).trim();
+
+        if (textOut) {
+            for (const classKey of classList) {
+                if (ctx.boldSet.has(classKey)) {
+                    ctx.boldMap.set(
+                        classKey,
+                        (ctx.boldMap.get(classKey) || "") + textOut
+                    );
+                }
+
+                if (ctx.italicSet.has(classKey)) {
+                    ctx.italicMap.set(
+                        classKey,
+                        (ctx.italicMap.get(classKey) || "") + textOut
+                    );
+                }
+            }
+        }
+    }
+}
+
+function getParagraphStats(node, stylesData) {
+    if (!node) {
+        return null;
+    }
+
+    if (node._stats && node._statsStyles === stylesData) {
+        return node._stats;
+    }
+
+    const meta = getStyleMeta(stylesData);
+
+    const source = outerHtml(node);
+    const inner = innerHtml(node);
+
+    const texts = collectParagraphTexts(node);
+
+    const originalText = texts.original;
+    const paddedText = texts.padded;
+
+    const fullTextOutside = texts.outside.trim();
+    const denominator = fullTextOutside.replace(/\s+/g, "").length;
+
+    const ctx = {
+        boldSet: meta.boldSet,
+        italicSet: meta.italicSet,
+        boldMap: new Map(),
+        italicMap: new Map(),
+        firstBold: new Map(),
+        hasPaddingLeft5em: texts.hasPaddingLeft5em,
+    };
+
+    const spans = node._spans || collectSpansFallback(node);
+
+    for (const span of spans) {
+        processSpanForStats(span, isSpanSkipped(span), ctx);
+    }
+
+    let boldFull = false;
+
+    if (denominator) {
+        let cumulative = "";
+
+        for (const classKey of meta.boldClasses) {
+            cumulative += ctx.boldMap.get(classKey) || "";
+
+            const numerator = cumulative.trim().replace(/\s+/g, "").length;
+
+            if (numerator / denominator > 0.95) {
+                boldFull = true;
+                break;
+            }
+        }
+
+        if (!boldFull) {
+            const numerator = cumulative.trim().replace(/\s+/g, "").length;
+            boldFull = numerator / denominator > 0.85;
+        }
+    }
+
+    let italicFull = false;
+
+    if (denominator) {
+        let italicText = "";
+
+        for (const classKey of meta.italicClasses) {
+            italicText += ctx.italicMap.get(classKey) || "";
+        }
+
+        const numerator = italicText.trim().replace(/\s+/g, "").length;
+        italicFull = numerator / denominator > 0.9;
+    }
+
+    let boldStart = false;
+
+    const fullStartText = originalText.trim();
+
+    if (fullStartText) {
+        for (const classKey of meta.boldClasses) {
+            const first = ctx.firstBold.get(classKey);
+
+            if (first && fullStartText.startsWith(first)) {
+                boldStart = true;
+                break;
+            }
+        }
+    }
+
+    const hasPicture = PICTURE_REGEXP.test(source.trim());
+
+    const stats = {
+        source,
+        inner,
+        originalText,
+        textAfterPadding1em: paddedText,
+        hasPaddingLeft5em: ctx.hasPaddingLeft5em,
+        hasPicture,
+        boldFull,
+        italicFull,
+        boldStart,
+    };
+
+    node._stats = stats;
+    node._statsStyles = stylesData;
+
+    return stats;
 }
 
 function pictureTextFromHtml(html) {
@@ -1103,67 +1622,16 @@ function pictureTextFromHtml(html) {
         .replace(/&nbsp;/g, " ");
 }
 
-function findSpanByExactStyle(root, styleValue) {
-    let found = null;
-
-    traverse(root, (node) => {
-        if (found) {
-            return;
-        }
-
-        if (
-            node.tag === "span" &&
-            node.attrs &&
-            node.attrs.style === styleValue
-        ) {
-            found = node;
-        }
-    });
-
-    return found;
-}
-
-function getClassList(node) {
-    const classValue = node.attrs && node.attrs.class;
-
-    if (!classValue) {
-        return [];
-    }
-
-    return String(classValue)
-        .split(/\s+/)
-        .filter(Boolean);
-}
-
-function findSpansByClass(root, className) {
-    const result = [];
-
-    traverse(root, (node) => {
-        if (node.tag === "span" && getClassList(node).includes(className)) {
-            result.push(node);
-        }
-    });
-
-    return result;
-}
-
-function firstElementText(root, tag) {
-    const elements = findAll(root, tag);
-    return elements.length ? text(elements[0]).trim() : "";
-}
-
 module.exports = {
     parseHtml,
+    prepareHtml,
     findAll,
     findDescendants,
     attr,
-    outerHtml,
     innerHtml,
-    textFromHtml,
     text,
-    replacePadding1emWithSpace,
+    textAfterPadding1em,
+    getParagraphStats,
     pictureTextFromHtml,
-    findSpanByExactStyle,
-    findSpansByClass,
-    firstElementText,
+    getBorderFlags,
 };

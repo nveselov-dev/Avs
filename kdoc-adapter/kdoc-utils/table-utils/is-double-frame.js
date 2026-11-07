@@ -1,13 +1,5 @@
-const { attr, findAll } = require("../html-lite");
+const { attr, findAll, getBorderFlags } = require("../html-lite");
 
-/**
- * Проверяет, является ли таблица двойной рамкой.
- *
- * @param {object[]} rows массив DOM-нод <tr>.
- * @param {*} _$ Заглушка вместо cheerio API.
- * @param {object} stylesData объект со стилями.
- * @returns {boolean} true, если таблица является двойной рамкой.
- */
 module.exports = (rows, _$, stylesData) => {
   let isDoubleFrame = true;
 
@@ -43,12 +35,12 @@ module.exports = (rows, _$, stylesData) => {
       }
 
       const className = attr(cellElement, "class");
-      const styleClass = stylesData[className] || {};
+      const flags = getBorderFlags(stylesData[className]);
 
-      const left = /solid/.test(styleClass["border-left"]);
-      const right = /solid/.test(styleClass["border-right"]);
-      const top = /solid/.test(styleClass["border-top"]);
-      const bottom = /solid/.test(styleClass["border-bottom"]);
+      const left = flags.left;
+      const right = flags.right;
+      const top = flags.top;
+      const bottom = flags.bottom;
 
       const isTopRow = rowIndex == 0;
       const isBottomRow = rowIndex == rowCount - 1;

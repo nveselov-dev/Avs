@@ -411,59 +411,88 @@ function assertSameJson(file, expectedJson, receivedJson) {
     }
 }
 
+const timings = [];
+
+afterAll(() => {
+    if (!timings.length) {
+        return;
+    }
+
+    const totalMs = timings.reduce((sum, item) => sum + item.elapsedMs, 0);
+    const averageMs = totalMs / timings.length;
+
+    const slowest = [...timings]
+        .sort((a, b) => b.elapsedMs - a.elapsedMs)
+        .slice(0, 5);
+
+    console.log("\n--- Итог по времени ---");
+    console.log(`Файлов: ${timings.length}`);
+    console.log(`Суммарно: ${totalMs} ms`);
+    console.log(`Среднее: ${averageMs.toFixed(1)} ms`);
+
+    console.log("\nТоп-5 самых долгих файлов:");
+
+    for (const item of slowest) {
+        console.log(`${item.file}: ${item.elapsedMs} ms`);
+    }
+});
+
 describe("KDoc Adapter comparison", () => {
-    it("сравнивает все фикстуры и останавливается на первом несовпадении", async () => {
-        if (!htmlFiles.length) {
+    if (!htmlFiles.length) {
+        it("должны быть найдены HTML-фикстуры", () => {
             throw new Error(
                 `Не найдено HTML-фикстур в папке: ${HTML_DIR}` +
                 (ONLY ? `\nФильтр KDOC_ONLY=${ONLY}` : "")
             );
-        }
+        });
 
-        let totalMs = 0;
-        let processedFiles = 0;
+        return;
+    }
 
-        for (const htmlPath of htmlFiles) {
-            const relHtmlPath = path.relative(HTML_DIR, htmlPath);
-            const jsonPath = path.join(
-                JSON_DIR,
-                relHtmlPath.replace(/\.html$/i, ".json")
+    test.each(
+        htmlFiles.map((htmlPath) => [
+            path.relative(process.cwd(), htmlPath),
+            htmlPath,
+        ])
+    )("%s", async (_label, htmlPath) => {
+        const relHtmlPath = path.relative(HTML_DIR, htmlPath);
+        const jsonPath = path.join(
+            JSON_DIR,
+            relHtmlPath.replace(/\.html$/i, ".json")
+        );
+
+        const file = _label;
+
+        if (!fs.existsSync(jsonPath)) {
+            throw new Error(
+                `[${file}] Не найден ожидаемый JSON:\n` +
+                `HTML: ${htmlPath}\n` +
+                `Ожидаемый JSON: ${jsonPath}`
             );
-
-            const file = path.relative(process.cwd(), htmlPath);
-
-            if (!fs.existsSync(jsonPath)) {
-                throw new Error(
-                    `[${file}] Не найден ожидаемый JSON:\n` +
-                    `HTML: ${htmlPath}\n` +
-                    `Ожидаемый JSON: ${jsonPath}`
-                );
-            }
-
-            const html = fs.readFileSync(htmlPath, "utf8");
-            const expectedJson = fs.readFileSync(jsonPath, "utf8");
-
-            const startedAt = Date.now();
-
-            const result = await adapter(html);
-
-            const elapsedMs = Date.now() - startedAt;
-
-            totalMs += elapsedMs;
-            processedFiles++;
-
-            console.log(`✅ ${file} — ${elapsedMs} ms`);
-
-            const receivedJson = JSON.stringify(result, null, 2);
-
-            assertSameJson(file, expectedJson, receivedJson);
         }
 
-        if (processedFiles > 0) {
-            const averageMs = (totalMs / processedFiles).toFixed(1);
+        const html = fs.readFileSync(htmlPath, "utf8");
+        const expectedJson = fs.readFileSync(jsonPath, "utf8");
 
-            console.log(`\nСуммарно: ${totalMs} ms`);
-            console.log(`Среднее: ${averageMs} ms`);
+        const startedAt = Date.now();
+
+        const result = await adapter(html);
+
+        const elapsedMs = Date.now() - startedAt;
+
+        timings.push({
+            file,
+            elapsedMs,
+        });
+
+        const receivedJson = JSON.stringify(result, null, 2);
+
+        try {
+            assertSameJson(file, expectedJson, receivedJson);
+            console.log(`✅ ${file} — ${elapsedMs} ms`);
+        } catch (error) {
+            console.log(`❌ ${file} — ${elapsedMs} ms`);
+            throw error;
         }
     });
 });
